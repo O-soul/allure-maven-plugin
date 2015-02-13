@@ -35,12 +35,12 @@ public class AllureReportMojo extends AbstractMavenReport {
             defaultValue = "${project.reporting.outputDirectory}/allure-maven-plugin")
     private File outputDirectory;
 
-    @Parameter(property = "allure.results.pattern", required = false,
+    @Parameter(property = "allure.results.directory", required = false,
             defaultValue = "**/allure-results")
     private String resultsPattern;
 
     @Parameter(property = "allure.version", required = false,
-            defaultValue = "1.3.9")
+            defaultValue = "1.4.7")
     private String reportVersion;
 
     @Parameter(defaultValue = "${project}", required = true, readonly = true)
@@ -83,7 +83,7 @@ public class AllureReportMojo extends AbstractMavenReport {
     protected void executeReport(Locale locale) throws MavenReportException {
         getLog().info("Report Version: " + reportVersion);
         getLog().info("Results Pattern: " + resultsPattern);
-        File[] reportDirectories = getReportDirectories(projectBaseDirectory, resultsPattern);
+        File[] reportDirectories = getPathsByGlobs(projectBaseDirectory, resultsPattern);
         getLog().info(String.format("Found [%s] results directories by pattern [%s]",
                 reportDirectories.length, resultsPattern));
 
@@ -166,19 +166,11 @@ public class AllureReportMojo extends AbstractMavenReport {
         return "Extended report on the test results of the project.";
     }
 
-    private File[] getReportDirectories(File baseDir, String globs) {
-        if (new File(globs).isAbsolute()) {
-            return getPathsByAbsolute(globs);
-        } else {
-            return getPathsByGlobs(baseDir, globs);
-        }
-    }
-
-    private File[] getPathsByAbsolute(String absolute) {
-        return new File[]{new File(absolute)};
-    }
-
     private File[] getPathsByGlobs(File baseDir, String globs) {
+        if (new File(globs).isAbsolute()) {
+            return new File[]{new File(globs)};
+        }
+
         DirectoryScanner scanner = new DirectoryScanner();
         scanner.setBasedir(baseDir);
         scanner.setIncludes(new String[]{globs});
