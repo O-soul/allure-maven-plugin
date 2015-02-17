@@ -40,7 +40,7 @@ public class AllureReportMojo extends AbstractMavenReport {
     private String resultsPattern;
 
     @Parameter(property = "allure.version", required = false,
-            defaultValue = "1.4.7")
+            defaultValue = "1.4.8")
     private String reportVersion;
 
     @Parameter(defaultValue = "${project}", required = true, readonly = true)
