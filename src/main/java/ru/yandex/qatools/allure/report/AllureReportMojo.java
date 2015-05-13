@@ -1,7 +1,11 @@
 package ru.yandex.qatools.allure.report;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.FalseFileFilter;
+import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.maven.doxia.sink.Sink;
 import org.apache.maven.doxia.siterenderer.Renderer;
+import org.apache.maven.model.Dependency;
 import org.apache.maven.plugin.descriptor.PluginDescriptor;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -14,9 +18,11 @@ import org.codehaus.plexus.util.DirectoryScanner;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.repository.RemoteRepository;
-import ru.yandex.qatools.allure.report.utils.DependencyResolver;
+import ru.yandex.qatools.clay.Aether;
 
 import java.io.File;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
@@ -28,8 +34,15 @@ import java.util.Locale;
 @Mojo(name = "report", defaultPhase = LifecyclePhase.SITE)
 public class AllureReportMojo extends AbstractMavenReport {
 
+    public static final String DATA = "data";
+    public static final String TESTCASE_JSON = ".+-testcase\\.json";
+    public static final String COLON = ":";
+
     @Parameter(defaultValue = "${project.basedir}", readonly = true)
     private File projectBaseDirectory;
+
+    @Parameter(defaultValue = "${project.reporting.outputDirectory}", readonly = true)
+    private File reportingDirectory;
 
     @Parameter(property = "allure.report.directory", required = false,
             defaultValue = "${project.reporting.outputDirectory}/allure-maven-plugin")
@@ -46,8 +59,14 @@ public class AllureReportMojo extends AbstractMavenReport {
     @Parameter(defaultValue = "${project}", required = true, readonly = true)
     protected MavenProject project;
 
+    /**
+     * Fail the report generation if no report data found in given report directories.
+     */
+    @Parameter(defaultValue = "false")
+    protected boolean failReportIfEmpty;
+
     @Component
-    protected PluginDescriptor plugin;
+    protected PluginDescriptor pluginDescriptor;
 
     @Component
     protected Renderer siteRenderer;
@@ -63,6 +82,9 @@ public class AllureReportMojo extends AbstractMavenReport {
 
     @Parameter(defaultValue = "${project.remotePluginRepositories}", readonly = true)
     private List<RemoteRepository> pluginRepos;
+
+    @Parameter
+    protected List<Dependency> plugins = Collections.emptyList();
 
     @Override
     protected Renderer getSiteRenderer() {
@@ -83,21 +105,28 @@ public class AllureReportMojo extends AbstractMavenReport {
     protected void executeReport(Locale locale) throws MavenReportException {
         getLog().info("Report Version: " + reportVersion);
         getLog().info("Results Pattern: " + resultsPattern);
+
         File[] reportDirectories = getPathsByGlobs(projectBaseDirectory, resultsPattern);
         getLog().info(String.format("Found [%s] results directories by pattern [%s]",
                 reportDirectories.length, resultsPattern));
 
-        if (reportDirectories.length == 0) {
-            throw new MavenReportException(String.format("Can't find any results directories by pattern [%s]",
-                    resultsPattern));
-        }
+        logDirectories(reportDirectories);
+        logPlugins();
+
+        checkDirectories(reportDirectories);
 
         try {
-            DependencyResolver resolver = new DependencyResolver(repoSystem, repoSession, projectRepos);
-            AllureReportBuilder builder = new AllureReportBuilder(reportVersion, outputDirectory, resolver);
+            AllureReportBuilder builder = createReportBuilder();
+            for (Dependency plugin : getPlugins()) {
+                builder.addExtension(getCoordinates(plugin));
+            }
 
             getLog().info("Generate report to " + outputDirectory);
             builder.processResults(reportDirectories);
+
+            if (failReportIfEmpty && isReportEmpty()) {
+                throw new MavenReportException("There are no allure results found.");
+            }
 
             getLog().info("Report data generated successfully. Unpack report face...");
             builder.unpackFace();
@@ -108,6 +137,81 @@ public class AllureReportMojo extends AbstractMavenReport {
             getLog().error("Can't generate allure report data", e);
             throw new MavenReportException("Can't generate allure report data", e);
         }
+    }
+
+    /**
+     * Get coordinates in Aether format {@code <groupId>:<artifactId>[:<extension>[:<classifier>]]:<version>}.
+     */
+    protected String getCoordinates(Dependency dependency) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(dependency.getGroupId())
+                .append(COLON)
+                .append(dependency.getArtifactId())
+                .append(COLON)
+                .append(dependency.getType())
+                .append(COLON);
+
+        if (dependency.getClassifier() != null) {
+            builder.append(dependency.getClassifier()).append(COLON);
+        }
+
+        builder.append(dependency.getVersion());
+        return builder.toString();
+    }
+
+    /**
+     * Create a report builder.
+     */
+    protected AllureReportBuilder createReportBuilder() throws AllureReportBuilderException {
+        Aether aether = Aether.aether(repoSystem, repoSession, projectRepos);
+        AllureReportBuilder builder = new AllureReportBuilder(reportVersion, outputDirectory, aether);
+        builder.setClassLoader(Thread.currentThread().getContextClassLoader());
+        return builder;
+    }
+
+    /**
+     * Check that there are at least one result directory.
+     */
+    protected void checkDirectories(File[] reportDirectories) throws MavenReportException {
+        if (reportDirectories.length == 0) {
+            throw new MavenReportException(String.format("Can't find any results directories by pattern [%s]",
+                    resultsPattern));
+        }
+    }
+
+    /**
+     * Write information about found plugins.
+     */
+    protected void logPlugins() {
+        getLog().info(String.format("Found [%d] plugins", getPlugins().size()));
+        for (Dependency plugin : getPlugins()) {
+            getLog().info(plugin.toString());
+        }
+    }
+
+    /**
+     * Write an absolute directory path for each given directory to the log.
+     */
+    protected void logDirectories(File[] directories) {
+        getLog().info(String.format("Found [%s] results directories by pattern [%s]",
+                directories.length, resultsPattern));
+        for (File directory : directories) {
+            getLog().info(directory.getAbsolutePath());
+        }
+    }
+
+    /**
+     * Find all test cases in data directory. Returns false if there are some
+     * test cases files present true otherwise.
+     */
+    protected boolean isReportEmpty() {
+        File data = new File(outputDirectory, DATA);
+        if (data.isDirectory()) {
+            Collection<File> files = FileUtils.listFiles(data,
+                    new RegexFileFilter(TESTCASE_JSON), FalseFileFilter.INSTANCE);
+            return files.isEmpty();
+        }
+        return true;
     }
 
     /**
@@ -126,12 +230,24 @@ public class AllureReportMojo extends AbstractMavenReport {
 
         sink.lineBreak();
 
-        sink.rawText("<meta http-equiv=\"refresh\" content=\"0;url=allure-maven-plugin/index.html\" />");
-        sink.link("allure-maven-plugin/index.html");
+        File indexHtmlFile = new File(outputDirectory, "index.html");
+        String relativePath = reportingDirectory.toURI().relativize(indexHtmlFile.toURI()).getPath();
+
+        sink.rawText(String.format("<meta http-equiv=\"refresh\" content=\"0;url=%s\" />",
+                relativePath));
+
+        sink.link(relativePath);
 
         sink.body_();
         sink.flush();
         sink.close();
+    }
+
+    /**
+     * Get list of plugins.
+     */
+    protected List<Dependency> getPlugins() {
+        return plugins;
     }
 
     /**
@@ -141,7 +257,7 @@ public class AllureReportMojo extends AbstractMavenReport {
      */
     @Override
     public String getOutputName() {
-        return plugin.getArtifactId();
+        return pluginDescriptor.getArtifactId();
     }
 
     /**
