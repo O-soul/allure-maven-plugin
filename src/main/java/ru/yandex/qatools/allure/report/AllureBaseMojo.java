@@ -9,10 +9,7 @@ import org.apache.maven.reporting.AbstractMavenReport;
 
 import java.util.Locale;
 public abstract class AllureBaseMojo extends AbstractMavenReport {
-	/**
-	  @author Oleg Ignatiev 
-	          Date: 29.05.16
-	 */
+	
     @Component
     protected PluginDescriptor pluginDescriptor;
 
@@ -44,12 +41,9 @@ public abstract class AllureBaseMojo extends AbstractMavenReport {
         return pluginDescriptor.getArtifactId();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public String getName(Locale locale) {
-        return "Allure";
+        return "Saplure";
     }
 
     /**
