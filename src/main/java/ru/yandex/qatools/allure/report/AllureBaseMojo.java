@@ -9,10 +9,6 @@ import org.apache.maven.reporting.AbstractMavenReport;
 
 import java.util.Locale;
 
-/**
- * @author Dmitry Baev charlie@yandex-team.ru
- *         Date: 30.07.15
- */
 public abstract class AllureBaseMojo extends AbstractMavenReport {
 
     @Component
