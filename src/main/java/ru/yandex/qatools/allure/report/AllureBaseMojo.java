@@ -38,9 +38,7 @@ public abstract class AllureBaseMojo extends AbstractMavenReport {
         return project;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+   
     @Override
     public String getOutputName() {
         return pluginDescriptor.getArtifactId();
