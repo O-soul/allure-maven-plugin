@@ -43,7 +43,7 @@ public abstract class AllureBaseMojo extends AbstractMavenReport {
 
     @Override
     public String getName(Locale locale) {
-        return "Mallure";
+        return "Mall";
     }
 
     /**
