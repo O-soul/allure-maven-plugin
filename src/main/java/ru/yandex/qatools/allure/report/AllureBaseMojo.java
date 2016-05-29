@@ -8,9 +8,11 @@ import org.apache.maven.project.MavenProject;
 import org.apache.maven.reporting.AbstractMavenReport;
 
 import java.util.Locale;
-
 public abstract class AllureBaseMojo extends AbstractMavenReport {
-
+	/**
+	  @author Oleg Ignatiev 
+	          Date: 29.05.16
+	 */
     @Component
     protected PluginDescriptor pluginDescriptor;
 
