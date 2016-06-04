@@ -51,6 +51,6 @@ public abstract class AllureBaseMojo extends AbstractMavenReport {
      */
     @Override
     public String getDescription(Locale locale) {
-        return "Extended report on the test results of the project.";
+        return "Extended report on the test results of project.";
     }
 }
